@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  "Latent Space의 동역학적 흐름(Flow) 정의와 대조 학습(Contrastive Learning)의 결합을 통해, 행동 데이터의 본질적 특징을 강인하게 학습하는 경량화된 HAR framwork"
+  "Latent Space의 동역학적 흐름(Flow) 정의와 대조 학습(Contrastive Learning)의 결합을 통해, 행동 데이터의 본질적 특징을 강인하게 학습하는 경량화된 HAR framework"
 </p>
 
 ---
