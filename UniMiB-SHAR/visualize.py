@@ -1,6 +1,7 @@
 import io
 import os
 import time
+import copy
 import torch
 import contextlib
 import numpy as np
@@ -223,10 +224,14 @@ def measure_efficiency(model, device, input_shape=(1, 151, 3), warmup=10, iters=
     """
     모델의 파라미터 수, FLOPs, 추론 속도를 측정합니다.
     """
-    model.eval()
+    measure_device = torch.device('cpu')
+    model_cpu = copy.deepcopy(model).to(measure_device)
+    model_cpu.eval()
     
+    real_input_shape = list(input_shape)
+    real_input_shape[0] = 1
     # 더미 입력 데이터 생성
-    sample_input = torch.randn(input_shape).to(device)
+    sample_input = torch.randn(tuple(real_input_shape)).to(measure_device)
 
     # -------------------------------------------------
     # 1) 파라미터 수
@@ -244,7 +249,7 @@ def measure_efficiency(model, device, input_shape=(1, 151, 3), warmup=10, iters=
                 fake_out = io.StringIO()
                 fake_err = io.StringIO()
                 with contextlib.redirect_stdout(fake_out), contextlib.redirect_stderr(fake_err):
-                    flops = FlopCountAnalysis(model, (sample_input,))
+                    flops = FlopCountAnalysis(model_cpu, (sample_input,))
                     total_flops = flops.total()
             flops_m = total_flops / 1e6  # to millions
         except Exception as e:
@@ -257,21 +262,18 @@ def measure_efficiency(model, device, input_shape=(1, 151, 3), warmup=10, iters=
     with torch.no_grad():
         # Warmup
         for _ in range(warmup):
-            _ = model(sample_input)
-        
-        if device.type == "cuda":
-            torch.cuda.synchronize()
+            _ = model_cpu(sample_input)
 
         start = time.time()
         for _ in range(iters):
-            _ = model(sample_input)
-        
-        if device.type == "cuda":
-            torch.cuda.synchronize()
+            _ = model_cpu(sample_input)
+
         end = time.time()
 
     avg_sec = (end - start) / iters
     inference_ms = avg_sec * 1000.0
+
+    del model_cpu
 
     return {
         "params_m": params_m,
