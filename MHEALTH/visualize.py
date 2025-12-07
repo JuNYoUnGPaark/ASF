@@ -1,6 +1,7 @@
 import io
 import os
 import time
+import copy
 import torch
 import contextlib
 import numpy as np
@@ -53,13 +54,13 @@ def plot_classification_results(y_true, y_pred, save_path=None):
     
     plt.figure(figsize=(25, 25))
     ax = sns.heatmap(cm, annot=True, fmt='.2f', cmap='Blues', square=True,
-                annot_kws={"size": 22}, cbar_kws={"shrink": 0.7},
+                annot_kws={"size": 38}, cbar_kws={"shrink": 0.7},
                 xticklabels=ACTIVITY_LABELS_CM, yticklabels=ACTIVITY_LABELS_CM)
 
     cbar = ax.collections[0].colorbar
     cbar.ax.tick_params(labelsize=30)
     plt.xlabel('Predicted Label', fontsize=35)
-    plt.ylabel('True Label', fontsize=25)
+    plt.ylabel('True Label', fontsize=35)
     plt.title('')
     plt.xticks(rotation=90, ha='right', fontsize=40)
     plt.yticks(rotation=0, fontsize=40)
@@ -210,10 +211,14 @@ def measure_efficiency(model, device, input_shape=(1, 128, 23), warmup=10, iters
     """
     모델의 파라미터 수, FLOPs, 추론 속도를 측정합니다.
     """
-    model.eval()
+    measure_device = torch.device('cpu')
+    model_cpu = copy.deepcopy(model).to(measure_device)
+    model_cpu.eval()
     
+    real_input_shape = list(input_shape)
+    real_input_shape[0] = 1
     # 더미 입력 데이터 생성
-    sample_input = torch.randn(input_shape).to(device)
+    sample_input = torch.randn(tuple(real_input_shape)).to(measure_device)
 
     # -------------------------------------------------
     # 1) 파라미터 수
@@ -231,7 +236,7 @@ def measure_efficiency(model, device, input_shape=(1, 128, 23), warmup=10, iters
                 fake_out = io.StringIO()
                 fake_err = io.StringIO()
                 with contextlib.redirect_stdout(fake_out), contextlib.redirect_stderr(fake_err):
-                    flops = FlopCountAnalysis(model, (sample_input,))
+                    flops = FlopCountAnalysis(model_cpu, (sample_input,))
                     total_flops = flops.total()
             flops_m = total_flops / 1e6  # to millions
         except Exception as e:
@@ -244,21 +249,17 @@ def measure_efficiency(model, device, input_shape=(1, 128, 23), warmup=10, iters
     with torch.no_grad():
         # Warmup
         for _ in range(warmup):
-            _ = model(sample_input)
-        
-        if device.type == "cuda":
-            torch.cuda.synchronize()
+            _ = model_cpu(sample_input)
 
         start = time.time()
         for _ in range(iters):
-            _ = model(sample_input)
-        
-        if device.type == "cuda":
-            torch.cuda.synchronize()
+            _ = model_cpu(sample_input)
         end = time.time()
 
     avg_sec = (end - start) / iters
     inference_ms = avg_sec * 1000.0
+
+    del model_cpu
 
     return {
         "params_m": params_m,
